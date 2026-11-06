@@ -43,6 +43,20 @@ Standard Dear ImGui controller inputs are supported.
   - Tweak values (when activated with A)
   - Resize window (when holding Y)
 
+## 3DS storage layout (fork)
+
+On 3DS the FTP root `/` lists the available storage areas instead of the SD
+card contents:
+
+- `/sdmc`: SD card (formerly `/`)
+- `/ctrnand`: internal CTRNAND
+- `/twln`: internal TWLNAND
+- `/twlp`: TWL photo partition
+
+The NAND areas only appear when the app has the matching filesystem access
+rights (the CIA requests them; a `.3dsx` depends on the launcher). Writing to
+NAND can brick the console, so back it up first. Not tested on hardware yet.
+
 ## Latest Builds
 
 NDS: https://mtheall.com/~mtheall/ftpd.nds
