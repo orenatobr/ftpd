@@ -1,6 +1,36 @@
-# ftpd
+# ftpd (fork with 3DS internal NAND access)
 
 FTP Server for 3DS/Switch/Linux.
+
+> **This is a fork of [mtheall/ftpd](https://github.com/mtheall/ftpd).**
+> All the credit for the FTP server goes to the original authors: Michael Theall
+> ([mtheall](https://github.com/mtheall)), Dave Murphy and TuxSH, plus the
+> contributors of the upstream project. This fork is released under the same
+> license (GPL-3.0) and only adds the feature described below.
+
+## What this fork adds
+
+On 3DS, the upstream server only exposes the SD card. This fork also exposes
+the console's internal memory (NAND). The FTP root `/` lists the available
+storage areas:
+
+- `/sdmc`: SD card (formerly `/`)
+- `/ctrnand`: internal CTRNAND
+- `/twln`: internal TWLNAND
+- `/twlp`: TWL photo partition
+
+Notes:
+
+- Breaking change: clients that used `/` for the SD card must now use `/sdmc`.
+- The CIA requests the filesystem access rights needed for the NAND. A `.3dsx`
+  only sees the NAND areas if the launcher grants those rights; otherwise they
+  are hidden and the SD card keeps working.
+- Writing to NAND can brick the console, so back it up first.
+- Not tested on real hardware yet.
+- The Switch version is not supported in this fork.
+
+Downloads (`.3dsx` and `.cia`) are on the
+[releases page](https://github.com/orenatobr/ftpd/releases/latest).
 
 ## Features
 
@@ -43,21 +73,7 @@ Standard Dear ImGui controller inputs are supported.
   - Tweak values (when activated with A)
   - Resize window (when holding Y)
 
-## 3DS storage layout (fork)
-
-On 3DS the FTP root `/` lists the available storage areas instead of the SD
-card contents:
-
-- `/sdmc`: SD card (formerly `/`)
-- `/ctrnand`: internal CTRNAND
-- `/twln`: internal TWLNAND
-- `/twlp`: TWL photo partition
-
-The NAND areas only appear when the app has the matching filesystem access
-rights (the CIA requests them; a `.3dsx` depends on the launcher). Writing to
-NAND can brick the console, so back it up first. Not tested on hardware yet.
-
-## Latest Builds
+## Upstream Builds (without NAND access)
 
 NDS: https://mtheall.com/~mtheall/ftpd.nds
 
