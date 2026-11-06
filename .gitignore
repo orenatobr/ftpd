@@ -25,3 +25,4 @@ switch-classic/build
 switch/romfs/*.zst
 switch/romfs/shaders/*.dksh
 build*/
+/out/

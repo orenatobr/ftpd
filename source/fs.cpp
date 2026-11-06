@@ -134,7 +134,11 @@ void fs::File::setBufferSize (std::size_t const size_)
 std::string fs::native (std::string_view const path_)
 {
 #ifdef __3DS__
-	if (path_.size () <= 1)
+	// paths that already carry a device prefix (romfs:/, sdmc:/) are not virtual
+	if (path_.empty () || path_.front () != '/')
+		return std::string (path_);
+
+	if (path_.size () == 1)
 		return "vroot:/";
 
 	auto const end = path_.find ('/', 1);
