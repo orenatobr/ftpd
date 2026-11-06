@@ -30,6 +30,7 @@
 #include <array>
 #include <cerrno>
 #include <cstring>
+#include <string>
 
 namespace
 {
@@ -40,16 +41,18 @@ struct Mount
 	char const *name;
 	/// \brief Archive to mount
 	FS_ArchiveID id;
+	/// \brief Whether the mount shows up as a folder in "/" (the SD card is the root itself)
+	bool folder;
 	/// \brief Whether the archive was mounted successfully
 	bool mounted;
 };
 
 /// \brief Mounts exposed under "/"
 std::array<Mount, 4> s_mounts{{
-    {"sdmc", ARCHIVE_SDMC, false},
-    {"ctrnand", ARCHIVE_NAND_CTR_FS, false},
-    {"twln", ARCHIVE_NAND_TWL_FS, false},
-    {"twlp", ARCHIVE_TWL_PHOTO, false},
+    {"sdmc", ARCHIVE_SDMC, false, false},
+    {"ctrnand", ARCHIVE_NAND_CTR_FS, true, false},
+    {"twln", ARCHIVE_NAND_TWL_FS, true, false},
+    {"twlp", ARCHIVE_TWL_PHOTO, true, false},
 }};
 
 /// \brief Directory iterator state for the virtual root
@@ -57,6 +60,8 @@ struct RootDir
 {
 	/// \brief Index of the next mount to return
 	std::size_t index;
+	/// \brief Iterator over the SD card, whose entries follow the mount folders
+	DIR *sd;
 };
 
 /// \brief Virtual root device
@@ -109,13 +114,23 @@ DIR_ITER *rootDirOpen (_reent *const r_, DIR_ITER *const dir_, char const *const
 		return nullptr;
 	}
 
-	static_cast<RootDir *> (dir_->dirStruct)->index = 0;
+	auto const state = static_cast<RootDir *> (dir_->dirStruct);
+	state->index     = 0;
+	state->sd        = ::opendir ("sdmc:/");
+	if (!state->sd)
+	{
+		r_->_errno = errno;
+		return nullptr;
+	}
+
 	return dir_;
 }
 
 int rootDirReset (_reent *const, DIR_ITER *const dir_)
 {
-	static_cast<RootDir *> (dir_->dirStruct)->index = 0;
+	auto const state = static_cast<RootDir *> (dir_->dirStruct);
+	state->index     = 0;
+	::rewinddir (state->sd);
 	return 0;
 }
 
@@ -123,22 +138,47 @@ int rootDirNext (_reent *const r_, DIR_ITER *const dir_, char *const name_, stru
 {
 	auto const state = static_cast<RootDir *> (dir_->dirStruct);
 
-	while (state->index < s_mounts.size () && !s_mounts[state->index].mounted)
-		++state->index;
-
-	if (state->index >= s_mounts.size ())
-		return rootErrno (r_, ENOENT);
-
 	// libctru hands us a buffer the size of dirent::d_name
 	constexpr auto nameSize = sizeof (dirent::d_name);
-	std::strncpy (name_, s_mounts[state->index++].name, nameSize - 1);
-	name_[nameSize - 1] = '\0';
 
-	return rootStat (r_, "/", st_);
+	// first the mount folders (/ctrnand, ...)
+	while (state->index < s_mounts.size () &&
+	       !(s_mounts[state->index].folder && s_mounts[state->index].mounted))
+		++state->index;
+
+	if (state->index < s_mounts.size ())
+	{
+		std::strncpy (name_, s_mounts[state->index++].name, nameSize - 1);
+		name_[nameSize - 1] = '\0';
+		return rootStat (r_, "/", st_);
+	}
+
+	// then the SD card contents, hiding anything that a mount folder shadows
+	for (;;)
+	{
+		auto const entry = ::readdir (state->sd);
+		if (!entry)
+			return rootErrno (r_, ENOENT);
+
+		if (vroot::mounted (entry->d_name))
+			continue;
+
+		std::strncpy (name_, entry->d_name, nameSize - 1);
+		name_[nameSize - 1] = '\0';
+
+		std::string const path = std::string ("sdmc:/") + entry->d_name;
+		if (::stat (path.c_str (), st_) != 0)
+			std::memset (st_, 0, sizeof (*st_));
+		return 0;
+	}
 }
 
-int rootDirClose (_reent *const, DIR_ITER *const)
+int rootDirClose (_reent *const, DIR_ITER *const dir_)
 {
+	auto const state = static_cast<RootDir *> (dir_->dirStruct);
+	if (state->sd)
+		::closedir (state->sd);
+	state->sd = nullptr;
 	return 0;
 }
 
@@ -215,7 +255,7 @@ bool vroot::mounted (std::string_view const name_)
 {
 	for (auto const &mount : s_mounts)
 	{
-		if (mount.mounted && name_ == mount.name)
+		if (mount.folder && mount.mounted && name_ == mount.name)
 			return true;
 	}
 

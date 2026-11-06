@@ -138,17 +138,18 @@ std::string fs::native (std::string_view const path_)
 	if (path_.empty () || path_.front () != '/')
 		return std::string (path_);
 
+	// the virtual root lists the SD card and the NAND folders
 	if (path_.size () == 1)
 		return "vroot:/";
 
 	auto const end = path_.find ('/', 1);
 	auto const dev = path_.substr (1, end == std::string_view::npos ? end : end - 1);
 
-	// unmounted devices resolve to a path that does not exist in the virtual root
-	if (!vroot::mounted (dev))
-		return "vroot:" + std::string (path_);
+	// NAND folders map to their own device, everything else lives on the SD card
+	if (vroot::mounted (dev))
+		return std::string (dev) + ':' + (end == std::string_view::npos ? "/" : std::string (path_.substr (end)));
 
-	return std::string (dev) + ':' + (end == std::string_view::npos ? "/" : std::string (path_.substr (end)));
+	return "sdmc:" + std::string (path_);
 #else
 	return std::string (path_);
 #endif
