@@ -137,6 +137,9 @@ private:
 #ifdef __3DS__
 	/// \brief HOME save archive the file is open for writing in, committed on a clean close
 	std::string m_save;
+
+	/// \brief Whether the stream is a HOME extdata file, committed by vroot::extFinish
+	bool m_ext = false;
 #endif
 
 	/// \brief Line buffer

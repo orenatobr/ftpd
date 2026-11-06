@@ -33,6 +33,7 @@
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <unordered_map>
 
 namespace
 {
@@ -137,9 +138,14 @@ struct ExtFile
 	u64 end;
 	/// \brief Whether the file is cut to the written size on close (mode "w")
 	bool truncate;
-	/// \brief Whether a write failed, so closing must not commit
+	/// \brief Whether a write failed or came up short, so the file must not be committed
 	bool failed;
+	/// \brief Stream wrapping this file
+	std::FILE *stream;
 };
+
+/// \brief Open extdata files by stream, so fs::File can ask for the commit after a clean transfer
+std::unordered_map<std::FILE *, ExtFile *> s_extFiles;
 
 int extRead (void *const cookie_, char *const buffer_, std::size_t const size_)
 {
@@ -168,6 +174,13 @@ int extWrite (void *const cookie_, char const *const buffer_, std::size_t const 
 
 	f->pos += bytes;
 	f->end = std::max (f->end, f->pos);
+	if (bytes != size_)
+	{
+		f->failed = true;
+		errno     = EIO;
+		return -1;
+	}
+
 	return static_cast<int> (bytes);
 }
 
@@ -188,30 +201,14 @@ fpos_t extSeek (void *const cookie_, fpos_t const offset_, int const whence_)
 
 int extClose (void *const cookie_)
 {
+	// closing never truncates or commits: that is decided by vroot::extFinish after a clean
+	// transfer, and an unfinished file is dropped with its archive
 	auto const f = static_cast<ExtFile *> (cookie_);
-	int rc       = 0;
-
-	if (!f->failed)
-	{
-		// mode "w": drop whatever is left of the old content past what was written
-		u64 size = 0;
-		if (f->truncate && R_SUCCEEDED (FSFILE_GetSize (f->file, &size)) && f->end < size)
-			FSFILE_SetSize (f->file, f->end);
-
-		FSFILE_Flush (f->file);
-		FSFILE_Close (f->file);
-
-		// save data archives drop uncommitted writes
-		if (R_FAILED (FSUSER_ControlArchive (f->archive, ARCHIVE_ACTION_COMMIT_SAVE_DATA, nullptr, 0,
-		        nullptr, 0)))
-			rc = -1;
-	}
-	else
-		FSFILE_Close (f->file);
-
+	s_extFiles.erase (f->stream);
+	FSFILE_Close (f->file);
 	FSUSER_CloseArchive (f->archive);
 	delete f;
-	return rc;
+	return 0;
 }
 
 int rootStat (_reent *const r_, char const *const path_, struct stat *const st_)
@@ -446,6 +443,16 @@ std::FILE *vroot::openExt (char const *const path_, char const *const mode_)
 		if (!mount.mounted || mount.id != ARCHIVE_EXTDATA || path.substr (0, colon) != mount.name)
 			continue;
 
+		// only "r+" (overwrite in place) and "w" (overwrite, cut to the written size on a clean
+		// close) are supported; anything else, append included, is refused
+		auto const update = std::strchr (mode_, 'r') && std::strchr (mode_, '+');
+		auto const write  = std::strchr (mode_, 'w') != nullptr;
+		if (std::strchr (mode_, 'a') || (!update && !write))
+		{
+			errno = ENOTSUP;
+			return nullptr;
+		}
+
 		FS_Archive archive = 0;
 		FS_Path const archivePath{PATH_BINARY, mount.dataSize, mount.data.data ()};
 		if (R_FAILED (FSUSER_OpenArchive (&archive, mount.id, archivePath)))
@@ -464,16 +471,50 @@ std::FILE *vroot::openExt (char const *const path_, char const *const mode_)
 			return nullptr;
 		}
 
-		auto cookie     = new ExtFile{archive, handle, 0, 0, std::strchr (mode_, 'w') != nullptr, false};
-		auto const fp = ::funopen (cookie, extRead, extWrite, extSeek, extClose);
+		auto const cookie = new ExtFile{archive, handle, 0, 0, write, false, nullptr};
+		auto const fp     = ::funopen (cookie, extRead, extWrite, extSeek, extClose);
 		if (!fp)
 		{
-			extClose (cookie);
+			// nothing was written: just release the handles
+			FSFILE_Close (handle);
+			FSUSER_CloseArchive (archive);
+			delete cookie;
+			errno = ENOMEM;
 			return nullptr;
 		}
 
+		cookie->stream = fp;
+		s_extFiles[fp] = cookie;
 		return fp;
 	}
 
 	return nullptr;
+}
+
+bool vroot::extFinish (std::FILE *const stream_)
+{
+	auto const it = s_extFiles.find (stream_);
+	if (it == s_extFiles.end ())
+		return true;
+
+	auto const f = it->second;
+	if (f->failed)
+		return false;
+
+	// mode "w": drop whatever is left of the old content past what was written
+	u64 size = 0;
+	if (f->truncate)
+	{
+		if (R_FAILED (FSFILE_GetSize (f->file, &size)))
+			return false;
+		if (f->end < size && R_FAILED (FSFILE_SetSize (f->file, f->end)))
+			return false;
+	}
+
+	if (R_FAILED (FSFILE_Flush (f->file)))
+		return false;
+
+	// save data archives drop uncommitted writes
+	return R_SUCCEEDED (
+	    FSUSER_ControlArchive (f->archive, ARCHIVE_ACTION_COMMIT_SAVE_DATA, nullptr, 0, nullptr, 0));
 }

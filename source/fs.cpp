@@ -163,8 +163,12 @@ bool fs::File::open (gsl::not_null<char const *> const path_,
 	gsl::owner<FILE *> fp = nullptr;
 #ifdef __3DS__
 	// the generic archive devoptab refuses writes to extdata files, so go through the FS API
+	m_ext = false;
 	if (std::strpbrk (mode_.get (), "wa+"))
-		fp = vroot::openExt (native.c_str (), mode_);
+	{
+		fp    = vroot::openExt (native.c_str (), mode_);
+		m_ext = fp != nullptr;
+	}
 #endif
 	if (!fp)
 		fp = std::fopen (native.c_str (), mode_);
@@ -191,6 +195,14 @@ void fs::File::close ()
 {
 	// a write that failed is not committed, so unmounting drops it
 	auto const clean = m_fp && std::ferror (m_fp.get ()) == 0 && std::fflush (m_fp.get ()) == 0;
+
+#ifdef __3DS__
+	// extdata files are cut and committed only after a clean flush; otherwise they are dropped
+	if (m_ext && clean)
+		(void)vroot::extFinish (m_fp.get ());
+	m_ext = false;
+#endif
+
 	m_fp.reset ();
 
 #ifdef __3DS__
