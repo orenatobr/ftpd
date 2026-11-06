@@ -29,6 +29,7 @@
 
 #include <array>
 #include <cerrno>
+#include <cstdio>
 #include <cstring>
 #include <string>
 
@@ -85,6 +86,40 @@ bool isRoot (char const *path_)
 		path_ = colon + 1;
 
 	return path_[0] == '\0' || std::strcmp (path_, "/") == 0;
+}
+
+/// \brief Log what the filesystem says about opening each HOME save for writing (no data is written)
+void probeSaves ()
+{
+	auto const log = std::fopen ("sdmc:/ftpd-home-diag.txt", "w");
+	if (!log)
+		return;
+
+	for (auto const &mount : s_mounts)
+	{
+		if (!mount.save || !mount.mounted)
+			continue;
+
+		FS_Archive archive = 0;
+		FS_Path const path{PATH_BINARY, mount.dataSize, mount.data.data ()};
+		auto const arc = FSUSER_OpenArchive (&archive, mount.id, path);
+		std::fprintf (log, "%s: OpenArchive %08lx\n", mount.name, static_cast<unsigned long> (arc));
+		if (R_FAILED (arc))
+			continue;
+
+		char const *file = mount.id == ARCHIVE_EXTDATA ? "/SaveData.dat" : "/Launcher.dat";
+		Handle handle = 0;
+		auto const rc = FSUSER_OpenFile (&handle, archive, fsMakePath (PATH_ASCII, file),
+		    FS_OPEN_READ | FS_OPEN_WRITE, 0);
+		std::fprintf (log, "%s: OpenFile %s read+write %08lx\n", mount.name, file,
+		    static_cast<unsigned long> (rc));
+		if (R_SUCCEEDED (rc))
+			FSFILE_Close (handle);
+
+		FSUSER_CloseArchive (archive);
+	}
+
+	std::fclose (log);
 }
 
 int rootStat (_reent *const r_, char const *const path_, struct stat *const st_)
@@ -255,6 +290,9 @@ bool vroot::init ()
 		                      : FS_Path{PATH_BINARY, mount.dataSize, mount.data.data ()};
 		mount.mounted = R_SUCCEEDED (archiveMount (mount.id, path, mount.name));
 	}
+
+	if (saves)
+		probeSaves ();
 
 	return true;
 }
