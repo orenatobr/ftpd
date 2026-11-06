@@ -25,7 +25,7 @@
 #include <string_view>
 
 #ifdef __3DS__
-/// \brief 3DS virtual root: "/" lists the SD card and the internal NAND partitions
+/// \brief 3DS virtual root: "/" is the SD card plus folders for the internal NAND partitions
 namespace vroot
 {
 /// \brief Register the virtual root device and mount the NAND archives
@@ -34,8 +34,8 @@ bool init ();
 /// \brief Unmount the NAND archives and unregister the virtual root device
 void exit ();
 
-/// \brief Whether a top-level directory (device) is mounted
-/// \param name_ Directory name (e.g. "sdmc")
+/// \brief Whether a top-level folder (a NAND device) is mounted
+/// \param name_ Folder name (e.g. "ctrnand")
 bool mounted (std::string_view name_);
 }
 #endif

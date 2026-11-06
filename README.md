@@ -11,17 +11,17 @@ FTP Server for 3DS/Switch/Linux.
 ## What this fork adds
 
 On 3DS, the upstream server only exposes the SD card. This fork also exposes
-the console's internal memory (NAND). The FTP root `/` lists the available
-storage areas:
+the console's internal memory (NAND). The FTP root `/` is still the SD card,
+and the NAND partitions appear as extra folders next to the SD card contents:
 
-- `/sdmc`: SD card (formerly `/`)
 - `/ctrnand`: internal CTRNAND
 - `/twln`: internal TWLNAND
 - `/twlp`: TWL photo partition
 
 Notes:
 
-- Breaking change: clients that used `/` for the SD card must now use `/sdmc`.
+- Existing clients keep working: `/` is still the SD card. A folder with one of
+  those names on the SD card is hidden by the NAND folder.
 - The CIA requests the filesystem access rights needed for the NAND. A `.3dsx`
   only sees the NAND areas if the launcher grants those rights; otherwise they
   are hidden and the SD card keeps working.
