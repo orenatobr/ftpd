@@ -135,8 +135,8 @@ private:
 	std::vector<char> m_buffer;
 
 #ifdef __3DS__
-	/// \brief Whether the file lives in a HOME save archive and needs a commit on close
-	bool m_save = false;
+	/// \brief HOME save archive the file is open for writing in, committed on a clean close
+	std::string m_save;
 #endif
 
 	/// \brief Line buffer

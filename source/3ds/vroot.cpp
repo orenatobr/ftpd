@@ -261,8 +261,7 @@ bool vroot::init ()
 
 void vroot::exit ()
 {
-	commit ();
-
+	// uncommitted writes are dropped on unmount on purpose: they come from failed transfers
 	for (std::size_t i = 1; i < s_mounts.size (); ++i)
 	{
 		if (s_mounts[i].mounted)
@@ -295,12 +294,12 @@ bool vroot::isSave (std::string_view const name_)
 	return false;
 }
 
-void vroot::commit ()
+void vroot::commit (std::string_view const name_)
 {
 	// save data archives drop uncommitted writes when they are unmounted
 	for (auto const &mount : s_mounts)
 	{
-		if (mount.save && mount.mounted)
+		if (mount.save && mount.mounted && name_ == mount.name)
 			archiveCommitSaveData (mount.name);
 	}
 }

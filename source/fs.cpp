@@ -33,6 +33,7 @@
 #include <cinttypes>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <cstdlib>
 #include <dirent.h>
 #include <memory>
@@ -164,7 +165,11 @@ bool fs::File::open (gsl::not_null<char const *> const path_,
 		return false;
 
 #ifdef __3DS__
-	m_save = vroot::isSave (std::string_view (native).substr (0, native.find (':')));
+	// only writers need a commit, and only for the archive they write to
+	auto const dev = native.substr (0, native.find (':'));
+	m_save.clear ();
+	if (vroot::isSave (dev) && std::strpbrk (mode_.get (), "wa+"))
+		m_save = dev;
 #endif
 
 	m_fp = std::unique_ptr<std::FILE, int (*) (std::FILE *)> (fp, &std::fclose);
@@ -177,12 +182,14 @@ bool fs::File::open (gsl::not_null<char const *> const path_,
 
 void fs::File::close ()
 {
+	// a write that failed is not committed, so unmounting drops it
+	auto const clean = m_fp && std::ferror (m_fp.get ()) == 0 && std::fflush (m_fp.get ()) == 0;
 	m_fp.reset ();
 
 #ifdef __3DS__
-	if (m_save)
-		vroot::commit ();
-	m_save = false;
+	if (clean && !m_save.empty ())
+		vroot::commit (m_save);
+	m_save.clear ();
 #endif
 }
 
