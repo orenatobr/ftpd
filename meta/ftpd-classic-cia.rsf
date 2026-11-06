@@ -25,11 +25,8 @@ AccessControlInfo:
   ReleaseKernelMinor            : "33" 
 
   # ExtData
-  UseExtSaveData                : true # enables ExtData       
-  # HOME Menu (EUR) layout saves: SaveData.dat is SD extdata 0x98 (declared as the app's own
-  # ExtData so it is writable) and Launcher.dat is system save 0x00020098
-  ExtSaveDataId                 : 0x98
-  SystemSaveDataId1             : 0x00020098
+  UseExtSaveData                : false # enables ExtData       
+  #ExtSaveDataId                : 0x300 # only set this when the ID is different to the UniqueId
 
   # FS:USER Archive Access Permissions
   # Uncomment as required
