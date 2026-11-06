@@ -31,6 +31,10 @@ AccessControlInfo:
   UseExtSaveData                : false # enables ExtData       
   #ExtSaveDataId                : 0x300 # only set this when the ID is different to the UniqueId
 
+  # HOME Menu (EUR) layout saves: Launcher.dat (system save) and SaveData.dat (SD extdata)
+  SystemSaveDataId1             : 0x00020098
+  AccessibleSaveDataIds         : [0x00000098]
+
   # FS:USER Archive Access Permissions
   # Uncomment as required
   FileSystemAccess:

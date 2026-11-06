@@ -40,16 +40,24 @@ struct Mount
 	char const *name;
 	/// \brief Archive to mount
 	FS_ArchiveID id;
+	/// \brief Binary archive path (media type and save data id), unused when dataSize is 0
+	std::array<u32, 3> data;
+	/// \brief Size in bytes of the binary archive path, 0 for an empty path
+	u32 dataSize;
 	/// \brief Whether the archive was mounted successfully
 	bool mounted;
 };
 
 /// \brief Mounts exposed under "/"
-std::array<Mount, 4> s_mounts{{
-    {"sdmc", ARCHIVE_SDMC, false},
-    {"ctrnand", ARCHIVE_NAND_CTR_FS, false},
-    {"twln", ARCHIVE_NAND_TWL_FS, false},
-    {"twlp", ARCHIVE_TWL_PHOTO, false},
+std::array<Mount, 6> s_mounts{{
+    {"sdmc", ARCHIVE_SDMC, {}, 0, false},
+    {"ctrnand", ARCHIVE_NAND_CTR_FS, {}, 0, false},
+    {"twln", ARCHIVE_NAND_TWL_FS, {}, 0, false},
+    {"twlp", ARCHIVE_TWL_PHOTO, {}, 0, false},
+    // HOME Menu (EUR) layout saves, opened through the system so the CMAC stays valid:
+    // Launcher.dat (system save 0x00020098) and SaveData.dat (SD extdata 0x00000098)
+    {"homesys", ARCHIVE_SYSTEM_SAVEDATA, {MEDIATYPE_NAND, 0x00020098, 0}, 8, false},
+    {"homeext", ARCHIVE_EXTDATA, {MEDIATYPE_SD, 0x00000098, 0}, 12, false},
 }};
 
 /// \brief Directory iterator state for the virtual root
@@ -192,8 +200,10 @@ bool vroot::init ()
 	for (std::size_t i = 1; i < s_mounts.size (); ++i)
 	{
 		auto &mount = s_mounts[i];
-		mount.mounted =
-		    R_SUCCEEDED (archiveMount (mount.id, fsMakePath (PATH_EMPTY, ""), mount.name));
+		auto const path = mount.dataSize == 0
+		                      ? fsMakePath (PATH_EMPTY, "")
+		                      : FS_Path{PATH_BINARY, mount.dataSize, mount.data.data ()};
+		mount.mounted = R_SUCCEEDED (archiveMount (mount.id, path, mount.name));
 	}
 
 	return true;
