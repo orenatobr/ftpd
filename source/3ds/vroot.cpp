@@ -62,10 +62,20 @@ struct RootDir
 /// \brief Virtual root device
 devoptab_t s_devoptab{};
 
+/// \brief Whether a path handed to the devoptab names the virtual root
+/// \note The path may or may not carry the "vroot:" device prefix
+bool isRoot (char const *path_)
+{
+	if (auto const colon = std::strchr (path_, ':'))
+		path_ = colon + 1;
+
+	return path_[0] == '\0' || std::strcmp (path_, "/") == 0;
+}
+
 int rootStat (_reent *const r_, char const *const path_, struct stat *const st_)
 {
-	// the device prefix is already stripped; only "/" exists
-	if (std::strcmp (path_, "/") != 0 && path_[0] != '\0')
+	// only "/" exists
+	if (!isRoot (path_))
 	{
 		r_->_errno = ENOENT;
 		return -1;
@@ -85,7 +95,7 @@ int rootErrno (_reent *const r_, int const err_)
 
 int rootChdir (_reent *const r_, char const *const path_)
 {
-	if (std::strcmp (path_, "/") != 0 && path_[0] != '\0')
+	if (!isRoot (path_))
 		return rootErrno (r_, ENOENT);
 
 	return 0;
@@ -93,7 +103,7 @@ int rootChdir (_reent *const r_, char const *const path_)
 
 DIR_ITER *rootDirOpen (_reent *const r_, DIR_ITER *const dir_, char const *const path_)
 {
-	if (std::strcmp (path_, "/") != 0 && path_[0] != '\0')
+	if (!isRoot (path_))
 	{
 		r_->_errno = ENOENT;
 		return nullptr;
