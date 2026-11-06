@@ -37,5 +37,12 @@ void exit ();
 /// \brief Whether a top-level folder (a NAND device) is mounted
 /// \param name_ Folder name (e.g. "ctrnand")
 bool mounted (std::string_view name_);
+
+/// \brief Whether a folder is a HOME save archive (opt-in, writes need a commit)
+/// \param name_ Folder name (e.g. "homesys")
+bool isSave (std::string_view name_);
+
+/// \brief Commit pending writes to the mounted HOME save archives
+void commit ();
 }
 #endif

@@ -158,9 +158,14 @@ std::string fs::native (std::string_view const path_)
 bool fs::File::open (gsl::not_null<char const *> const path_,
     gsl::not_null<char const *> const mode_)
 {
-	gsl::owner<FILE *> fp = std::fopen (fs::native (path_.get ()).c_str (), mode_);
+	auto const native = fs::native (path_.get ());
+	gsl::owner<FILE *> fp = std::fopen (native.c_str (), mode_);
 	if (!fp)
 		return false;
+
+#ifdef __3DS__
+	m_save = vroot::isSave (std::string_view (native).substr (0, native.find (':')));
+#endif
 
 	m_fp = std::unique_ptr<std::FILE, int (*) (std::FILE *)> (fp, &std::fclose);
 
@@ -173,6 +178,12 @@ bool fs::File::open (gsl::not_null<char const *> const path_,
 void fs::File::close ()
 {
 	m_fp.reset ();
+
+#ifdef __3DS__
+	if (m_save)
+		vroot::commit ();
+	m_save = false;
+#endif
 }
 
 int fs::File::seek (std::int64_t const pos_, int const origin_)

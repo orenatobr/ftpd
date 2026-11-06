@@ -134,6 +134,11 @@ private:
 	/// \brief Buffer
 	std::vector<char> m_buffer;
 
+#ifdef __3DS__
+	/// \brief Whether the file lives in a HOME save archive and needs a commit on close
+	bool m_save = false;
+#endif
+
 	/// \brief Line buffer
 	gsl::owner<char *> m_lineBuffer = nullptr;
 
