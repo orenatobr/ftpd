@@ -2536,6 +2536,14 @@ bool FtpSession::storeTransfer ()
 				return false;
 			}
 
+			// only a transfer that ended cleanly may commit writes to a save data archive
+			if (!m_file.commit ())
+			{
+				sendResponse ("451 Failed to commit the file\r\n");
+				setState (State::COMMAND, true, true);
+				return false;
+			}
+
 			sendResponse ("226 OK\r\n");
 			setState (State::COMMAND, true, true);
 			return false;

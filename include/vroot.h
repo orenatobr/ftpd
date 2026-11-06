@@ -56,6 +56,7 @@ bool extFinish (std::FILE *stream_);
 
 /// \brief Commit pending writes to one mounted HOME save archive
 /// \param name_ Folder name (e.g. "homesys")
-void commit (std::string_view name_);
+/// \return Whether the changes were committed
+bool commit (std::string_view name_);
 }
 #endif

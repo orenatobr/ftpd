@@ -85,6 +85,11 @@ public:
 	/// \brief Close file
 	void close ();
 
+	/// \brief Commit a file written in a HOME save archive; to be called once, after a clean transfer
+	/// \return Whether the data is committed (true for a file that needs no commit)
+	/// \note close () never commits: a file that is not committed is dropped with its archive
+	bool commit ();
+
 	/// \brief Seek to file position
 	/// \param pos_ File position
 	/// \param origin_ Reference position (\sa ::fseeko)

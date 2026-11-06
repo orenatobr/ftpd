@@ -179,7 +179,7 @@ bool fs::File::open (gsl::not_null<char const *> const path_,
 	// only writers need a commit, and only for the archive they write to
 	auto const dev = native.substr (0, native.find (':'));
 	m_save.clear ();
-	if (vroot::isSave (dev) && std::strpbrk (mode_.get (), "wa+"))
+	if (!m_ext && vroot::isSave (dev) && std::strpbrk (mode_.get (), "wa+"))
 		m_save = dev;
 #endif
 
@@ -193,22 +193,30 @@ bool fs::File::open (gsl::not_null<char const *> const path_,
 
 void fs::File::close ()
 {
-	// a write that failed is not committed, so unmounting drops it
-	auto const clean = m_fp && std::ferror (m_fp.get ()) == 0 && std::fflush (m_fp.get ()) == 0;
-
-#ifdef __3DS__
-	// extdata files are cut and committed only after a clean flush; otherwise they are dropped
-	if (m_ext && clean)
-		(void)vroot::extFinish (m_fp.get ());
-	m_ext = false;
-#endif
-
+	// nothing is committed here: an upload that did not reach commit () is dropped
 	m_fp.reset ();
 
 #ifdef __3DS__
-	if (clean && !m_save.empty ())
-		vroot::commit (m_save);
+	m_ext = false;
 	m_save.clear ();
+#endif
+}
+
+bool fs::File::commit ()
+{
+#ifdef __3DS__
+	if (!m_fp || (!m_ext && m_save.empty ()))
+		return true;
+
+	if (std::ferror (m_fp.get ()) != 0 || std::fflush (m_fp.get ()) != 0)
+		return false;
+
+	if (m_ext)
+		return vroot::extFinish (m_fp.get ());
+
+	return vroot::commit (m_save);
+#else
+	return true;
 #endif
 }
 

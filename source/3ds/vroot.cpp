@@ -421,14 +421,16 @@ bool vroot::isSave (std::string_view const name_)
 	return false;
 }
 
-void vroot::commit (std::string_view const name_)
+bool vroot::commit (std::string_view const name_)
 {
 	// save data archives drop uncommitted writes when they are unmounted
 	for (auto const &mount : s_mounts)
 	{
 		if (mount.save && mount.mounted && name_ == mount.name)
-			archiveCommitSaveData (mount.name);
+			return R_SUCCEEDED (archiveCommitSaveData (mount.name));
 	}
+
+	return false;
 }
 
 std::FILE *vroot::openExt (char const *const path_, char const *const mode_)
