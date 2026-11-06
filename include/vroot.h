@@ -22,6 +22,7 @@
 
 #pragma once
 
+#include <cstdio>
 #include <string_view>
 
 #ifdef __3DS__
@@ -41,6 +42,12 @@ bool mounted (std::string_view name_);
 /// \brief Whether a folder is a HOME save archive (opt-in, writes need a commit)
 /// \param name_ Folder name (e.g. "homesys")
 bool isSave (std::string_view name_);
+
+/// \brief Open a file of the HOME extdata for writing, committing on close
+/// \param path_ Native path (e.g. "homeext:/SaveData.dat")
+/// \param mode_ fopen mode
+/// \return The stream, or nullptr if the path is not in a mounted extdata
+std::FILE *openExt (char const *path_, char const *mode_);
 
 /// \brief Commit pending writes to one mounted HOME save archive
 /// \param name_ Folder name (e.g. "homesys")

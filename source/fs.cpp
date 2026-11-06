@@ -160,7 +160,14 @@ bool fs::File::open (gsl::not_null<char const *> const path_,
     gsl::not_null<char const *> const mode_)
 {
 	auto const native = fs::native (path_.get ());
-	gsl::owner<FILE *> fp = std::fopen (native.c_str (), mode_);
+	gsl::owner<FILE *> fp = nullptr;
+#ifdef __3DS__
+	// the generic archive devoptab refuses writes to extdata files, so go through the FS API
+	if (std::strpbrk (mode_.get (), "wa+"))
+		fp = vroot::openExt (native.c_str (), mode_);
+#endif
+	if (!fp)
+		fp = std::fopen (native.c_str (), mode_);
 	if (!fp)
 		return false;
 

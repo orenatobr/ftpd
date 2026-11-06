@@ -28,6 +28,7 @@
 #include <sys/iosupport.h>
 
 #include <array>
+#include <algorithm>
 #include <cerrno>
 #include <cstdio>
 #include <cstring>
@@ -120,6 +121,97 @@ void probeSaves ()
 	}
 
 	std::fclose (log);
+}
+
+/// \brief File of the HOME extdata, opened through the filesystem API directly
+/// \note The generic archive devoptab refuses to open extdata files for writing
+struct ExtFile
+{
+	/// \brief Archive handle the file belongs to (also used to commit)
+	FS_Archive archive;
+	/// \brief File handle
+	Handle file;
+	/// \brief Current position
+	u64 pos;
+	/// \brief End of the data written so far
+	u64 end;
+	/// \brief Whether the file is cut to the written size on close (mode "w")
+	bool truncate;
+	/// \brief Whether a write failed, so closing must not commit
+	bool failed;
+};
+
+int extRead (void *const cookie_, char *const buffer_, std::size_t const size_)
+{
+	auto const f = static_cast<ExtFile *> (cookie_);
+	u32 bytes    = 0;
+	if (R_FAILED (FSFILE_Read (f->file, &bytes, f->pos, buffer_, static_cast<u32> (size_))))
+	{
+		errno = EIO;
+		return -1;
+	}
+
+	f->pos += bytes;
+	return static_cast<int> (bytes);
+}
+
+int extWrite (void *const cookie_, char const *const buffer_, std::size_t const size_)
+{
+	auto const f = static_cast<ExtFile *> (cookie_);
+	u32 bytes    = 0;
+	if (R_FAILED (FSFILE_Write (f->file, &bytes, f->pos, buffer_, static_cast<u32> (size_), 0)))
+	{
+		f->failed = true;
+		errno     = EIO;
+		return -1;
+	}
+
+	f->pos += bytes;
+	f->end = std::max (f->end, f->pos);
+	return static_cast<int> (bytes);
+}
+
+fpos_t extSeek (void *const cookie_, fpos_t const offset_, int const whence_)
+{
+	auto const f = static_cast<ExtFile *> (cookie_);
+	u64 size     = 0;
+	if (whence_ == SEEK_END && R_FAILED (FSFILE_GetSize (f->file, &size)))
+	{
+		errno = EIO;
+		return -1;
+	}
+
+	auto const base = whence_ == SEEK_SET ? 0 : whence_ == SEEK_CUR ? f->pos : size;
+	f->pos          = base + offset_;
+	return static_cast<fpos_t> (f->pos);
+}
+
+int extClose (void *const cookie_)
+{
+	auto const f = static_cast<ExtFile *> (cookie_);
+	int rc       = 0;
+
+	if (!f->failed)
+	{
+		// mode "w": drop whatever is left of the old content past what was written
+		u64 size = 0;
+		if (f->truncate && R_SUCCEEDED (FSFILE_GetSize (f->file, &size)) && f->end < size)
+			FSFILE_SetSize (f->file, f->end);
+
+		FSFILE_Flush (f->file);
+		FSFILE_Close (f->file);
+
+		// save data archives drop uncommitted writes
+		if (R_FAILED (FSUSER_ControlArchive (f->archive, ARCHIVE_ACTION_COMMIT_SAVE_DATA, nullptr, 0,
+		        nullptr, 0)))
+			rc = -1;
+	}
+	else
+		FSFILE_Close (f->file);
+
+	FSUSER_CloseArchive (f->archive);
+	delete f;
+	return rc;
 }
 
 int rootStat (_reent *const r_, char const *const path_, struct stat *const st_)
@@ -340,4 +432,48 @@ void vroot::commit (std::string_view const name_)
 		if (mount.save && mount.mounted && name_ == mount.name)
 			archiveCommitSaveData (mount.name);
 	}
+}
+
+std::FILE *vroot::openExt (char const *const path_, char const *const mode_)
+{
+	std::string_view const path (path_);
+	auto const colon = path.find (':');
+	if (colon == std::string_view::npos)
+		return nullptr;
+
+	for (auto const &mount : s_mounts)
+	{
+		if (!mount.mounted || mount.id != ARCHIVE_EXTDATA || path.substr (0, colon) != mount.name)
+			continue;
+
+		FS_Archive archive = 0;
+		FS_Path const archivePath{PATH_BINARY, mount.dataSize, mount.data.data ()};
+		if (R_FAILED (FSUSER_OpenArchive (&archive, mount.id, archivePath)))
+		{
+			errno = EIO;
+			return nullptr;
+		}
+
+		std::string const file (path.substr (colon + 1));
+		Handle handle = 0;
+		if (R_FAILED (FSUSER_OpenFile (&handle, archive, fsMakePath (PATH_ASCII, file.c_str ()),
+		        FS_OPEN_READ | FS_OPEN_WRITE, 0)))
+		{
+			FSUSER_CloseArchive (archive);
+			errno = ENOENT;
+			return nullptr;
+		}
+
+		auto cookie     = new ExtFile{archive, handle, 0, 0, std::strchr (mode_, 'w') != nullptr, false};
+		auto const fp = ::funopen (cookie, extRead, extWrite, extSeek, extClose);
+		if (!fp)
+		{
+			extClose (cookie);
+			return nullptr;
+		}
+
+		return fp;
+	}
+
+	return nullptr;
 }
