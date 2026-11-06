@@ -32,6 +32,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -40,6 +41,11 @@ namespace fs
 /// \brief Print size in human-readable format (KiB, MiB, etc)
 /// \param size_ Size to print
 std::string printSize (std::uint64_t size_);
+
+/// \brief Convert an FTP path to the path used by the platform filesystem
+/// \param path_ Absolute FTP path
+/// \note On 3DS "/sdmc/x" becomes "sdmc:/x" and "/" becomes the virtual root
+std::string native (std::string_view path_);
 
 /// \brief File I/O object
 class File

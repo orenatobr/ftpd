@@ -22,6 +22,7 @@
 
 #include "fs.h"
 #include "ioBuffer.h"
+#include "vroot.h"
 
 #include <gsl/pointers>
 #include <gsl/util>
@@ -130,10 +131,29 @@ void fs::File::setBufferSize (std::size_t const size_)
 		(void)std::setvbuf (m_fp.get (), m_buffer.data (), _IOFBF, m_buffer.size ());
 }
 
+std::string fs::native (std::string_view const path_)
+{
+#ifdef __3DS__
+	if (path_.size () <= 1)
+		return "vroot:/";
+
+	auto const end = path_.find ('/', 1);
+	auto const dev = path_.substr (1, end == std::string_view::npos ? end : end - 1);
+
+	// unmounted devices resolve to a path that does not exist in the virtual root
+	if (!vroot::mounted (dev))
+		return "vroot:" + std::string (path_);
+
+	return std::string (dev) + ':' + (end == std::string_view::npos ? "/" : std::string (path_.substr (end)));
+#else
+	return std::string (path_);
+#endif
+}
+
 bool fs::File::open (gsl::not_null<char const *> const path_,
     gsl::not_null<char const *> const mode_)
 {
-	gsl::owner<FILE *> fp = std::fopen (path_, mode_);
+	gsl::owner<FILE *> fp = std::fopen (fs::native (path_.get ()).c_str (), mode_);
 	if (!fp)
 		return false;
 
@@ -290,7 +310,7 @@ fs::Dir::operator DIR * () const
 
 bool fs::Dir::open (gsl::not_null<char const *> const path_)
 {
-	auto const dp = ::opendir (path_);
+	auto const dp = ::opendir (fs::native (path_.get ()).c_str ());
 	if (!dp)
 		return false;
 

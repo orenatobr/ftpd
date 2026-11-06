@@ -39,17 +39,17 @@ AccessControlInfo:
    - CategoryFileSystemTool
    #- Debug
    #- TwlCardBackup
-   #- TwlNandData
+   - TwlNandData
    #- Boss
    - DirectSdmc
    #- Core
-   #- CtrNandRo
-   #- CtrNandRw
-   #- CtrNandRoWrite
+   - CtrNandRo
+   - CtrNandRw
+   - CtrNandRoWrite
    #- CategorySystemSettings
    #- CardBoard
    #- ExportImportIvs
-   #- DirectSdmcWrite
+   - DirectSdmcWrite
    #- SwitchCleanup
    #- SaveDataMove
    #- Shop

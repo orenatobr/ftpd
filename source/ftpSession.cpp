@@ -211,7 +211,7 @@ std::string resolvePath (std::string_view const path_)
 
 	// make sure parent is a directory
 	stat_t st;
-	if (::stat (dirName (path_).c_str (), &st) != 0)
+	if (::stat (fs::native (dirName (path_)).c_str (), &st) != 0)
 		return {};
 
 	if (!S_ISDIR (st.st_mode))
@@ -1060,7 +1060,8 @@ bool FtpSession::dataConnect ()
 
 int FtpSession::tzStat (char const *const path_, stat_t *st_)
 {
-	auto const rc = ::stat (path_, st_);
+	auto const nativePath = fs::native (path_);
+	auto const rc         = ::stat (nativePath.c_str (), st_);
 	if (rc != 0)
 		return rc;
 
@@ -1068,9 +1069,9 @@ int FtpSession::tzStat (char const *const path_, stat_t *st_)
 	if (m_config.getMTime ())
 	{
 		std::uint64_t mtime = 0;
-		auto const rc       = archive_getmtime (path_, &mtime);
+		auto const rc       = archive_getmtime (nativePath.c_str (), &mtime);
 		if (rc != 0)
-			error ("sdmc_getmtime %s 0x%lx\n", path_, rc);
+			error ("archive_getmtime %s 0x%lx\n", path_, rc);
 		else
 			st_->st_mtime = mtime - FtpServer::tzOffset ();
 	}
@@ -1081,7 +1082,8 @@ int FtpSession::tzStat (char const *const path_, stat_t *st_)
 
 int FtpSession::tzLStat (char const *const path_, stat_t *st_)
 {
-	auto const rc = ::lstat (path_, st_);
+	auto const nativePath = fs::native (path_);
+	auto const rc         = ::lstat (nativePath.c_str (), st_);
 	if (rc != 0)
 		return rc;
 
@@ -1089,9 +1091,9 @@ int FtpSession::tzLStat (char const *const path_, stat_t *st_)
 	if (m_config.getMTime ())
 	{
 		std::uint64_t mtime = 0;
-		auto const rc       = archive_getmtime (path_, &mtime);
+		auto const rc       = archive_getmtime (nativePath.c_str (), &mtime);
 		if (rc != 0)
-			error ("sdmc_getmtime %s 0x%lx\n", path_, rc);
+			error ("archive_getmtime %s 0x%lx\n", path_, rc);
 		else
 			st_->st_mtime = mtime - FtpServer::tzOffset ();
 	}
@@ -2259,9 +2261,9 @@ bool FtpSession::listTransfer ()
 				if (getmtime)
 				{
 					std::uint64_t mtime = 0;
-					auto const rc       = archive_getmtime (fullPath.c_str (), &mtime);
+					auto const rc = archive_getmtime (fs::native (fullPath).c_str (), &mtime);
 					if (rc != 0)
-						error ("sdmc_getmtime %s 0x%lx\n", fullPath.c_str (), rc);
+						error ("archive_getmtime %s 0x%lx\n", fullPath.c_str (), rc);
 					else
 						st.st_mtime = mtime - FtpServer::tzOffset ();
 				}
@@ -2721,7 +2723,7 @@ void FtpSession::DELE (char const *args_)
 	}
 
 	// unlink the path
-	if (::unlink (path.c_str ()) != 0)
+	if (::unlink (fs::native (path).c_str ()) != 0)
 	{
 		sendResponse ("550 %s\r\n", std::strerror (errno));
 		return;
@@ -2801,10 +2803,10 @@ void FtpSession::MDTM (char const *args_)
 #ifdef __3DS__
 	{
 		std::uint64_t mtime = 0;
-		auto const rc       = archive_getmtime (path.c_str (), &mtime);
+		auto const rc       = archive_getmtime (fs::native (path).c_str (), &mtime);
 		if (rc != 0)
 		{
-			error ("sdmc_getmtime %s 0x%lx\n", path.c_str (), rc);
+			error ("archive_getmtime %s 0x%lx\n", path.c_str (), rc);
 			sendResponse ("550 error 0x%lx\r\n", rc);
 			return;
 		}
@@ -2812,7 +2814,7 @@ void FtpSession::MDTM (char const *args_)
 			st.st_mtime = mtime - FtpServer::tzOffset ();
 	}
 #else
-	auto const rc = ::lstat (path.c_str (), &st);
+	auto const rc = ::lstat (fs::native (path).c_str (), &st);
 	if (rc != 0)
 	{
 		sendResponse ("550 %s\r\n", std::strerror (errno));
@@ -2857,7 +2859,7 @@ void FtpSession::MKD (char const *args_)
 	}
 
 	// create the directory
-	if (::mkdir (path.c_str (), 0755) != 0)
+	if (::mkdir (fs::native (path).c_str (), 0755) != 0)
 	{
 		sendResponse ("550 %s\r\n", std::strerror (errno));
 		return;
@@ -2930,7 +2932,7 @@ void FtpSession::NLST (char const *args_)
 #if FTPD_HAS_GLOB
 	if (std::strchr (args_, '*'))
 	{
-		if (::chdir (m_cwd.c_str ()) != 0 || !m_glob.glob (args_))
+		if (::chdir (fs::native (m_cwd).c_str ()) != 0 || !m_glob.glob (args_))
 		{
 			sendResponse ("501 %s\r\n", std::strerror (errno));
 			setState (State::COMMAND, false, false);
@@ -3411,7 +3413,7 @@ void FtpSession::RMD (char const *args_)
 	}
 
 	// remove the directory
-	if (::rmdir (path.c_str ()) != 0)
+	if (::rmdir (fs::native (path).c_str ()) != 0)
 	{
 		sendResponse ("550 %d %s\r\n", __LINE__, std::strerror (errno));
 		return;
@@ -3479,7 +3481,7 @@ void FtpSession::RNTO (char const *args_)
 	}
 
 	// rename the file
-	if (::rename (m_rename.c_str (), path.c_str ()) != 0)
+	if (::rename (fs::native (m_rename).c_str (), fs::native (path).c_str ()) != 0)
 	{
 		m_rename.clear ();
 		sendResponse ("550 %s\r\n", std::strerror (errno));

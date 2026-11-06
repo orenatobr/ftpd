@@ -25,6 +25,7 @@
 #include "fs.h"
 #include "ftpServer.h"
 #include "log.h"
+#include "vroot.h"
 
 #include "imgui_citro3d.h"
 #include "imgui_ctru.h"
@@ -560,6 +561,7 @@ bool platform::init ()
 	osSetSpeedupEnable (true);
 
 	acInit ();
+	vroot::init ();
 	ndmuInit ();
 	ptmuInit ();
 #ifndef CLASSIC
@@ -758,6 +760,8 @@ void platform::render ()
 
 void platform::exit ()
 {
+	vroot::exit ();
+
 #ifndef CLASSIC
 	imgui::citro3d::exit ();
 

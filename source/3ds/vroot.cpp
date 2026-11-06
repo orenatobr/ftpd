@@ -1,0 +1,213 @@
+// ftpd is a server implementation based on the following:
+// - RFC  959 (https://tools.ietf.org/html/rfc959)
+// - RFC 3659 (https://tools.ietf.org/html/rfc3659)
+// - suggested implementation details from https://cr.yp.to/ftp/filesystem.html
+// - Deflate transmission mode for FTP
+//   (https://tools.ietf.org/html/draft-preston-ftpext-deflate-04)
+//
+// Copyright (C) 2026 Michael Theall
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+#include "vroot.h"
+
+#include <3ds.h>
+
+#include <dirent.h>
+#include <sys/iosupport.h>
+
+#include <array>
+#include <cerrno>
+#include <cstring>
+
+namespace
+{
+/// \brief Archive to mount as a top-level directory of the virtual root
+struct Mount
+{
+	/// \brief Device name (also the directory name seen by FTP clients)
+	char const *name;
+	/// \brief Archive to mount
+	FS_ArchiveID id;
+	/// \brief Whether the archive was mounted successfully
+	bool mounted;
+};
+
+/// \brief Mounts exposed under "/"
+std::array<Mount, 4> s_mounts{{
+    {"sdmc", ARCHIVE_SDMC, false},
+    {"ctrnand", ARCHIVE_NAND_CTR_FS, false},
+    {"twln", ARCHIVE_NAND_TWL_FS, false},
+    {"twlp", ARCHIVE_TWL_PHOTO, false},
+}};
+
+/// \brief Directory iterator state for the virtual root
+struct RootDir
+{
+	/// \brief Index of the next mount to return
+	std::size_t index;
+};
+
+/// \brief Virtual root device
+devoptab_t s_devoptab{};
+
+int rootStat (_reent *const r_, char const *const path_, struct stat *const st_)
+{
+	// the device prefix is already stripped; only "/" exists
+	if (std::strcmp (path_, "/") != 0 && path_[0] != '\0')
+	{
+		r_->_errno = ENOENT;
+		return -1;
+	}
+
+	std::memset (st_, 0, sizeof (*st_));
+	st_->st_mode  = S_IFDIR | S_IRUSR | S_IXUSR | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH;
+	st_->st_nlink = 1;
+	return 0;
+}
+
+int rootErrno (_reent *const r_, int const err_)
+{
+	r_->_errno = err_;
+	return -1;
+}
+
+int rootChdir (_reent *const r_, char const *const path_)
+{
+	if (std::strcmp (path_, "/") != 0 && path_[0] != '\0')
+		return rootErrno (r_, ENOENT);
+
+	return 0;
+}
+
+DIR_ITER *rootDirOpen (_reent *const r_, DIR_ITER *const dir_, char const *const path_)
+{
+	if (std::strcmp (path_, "/") != 0 && path_[0] != '\0')
+	{
+		r_->_errno = ENOENT;
+		return nullptr;
+	}
+
+	static_cast<RootDir *> (dir_->dirStruct)->index = 0;
+	return dir_;
+}
+
+int rootDirReset (_reent *const, DIR_ITER *const dir_)
+{
+	static_cast<RootDir *> (dir_->dirStruct)->index = 0;
+	return 0;
+}
+
+int rootDirNext (_reent *const r_, DIR_ITER *const dir_, char *const name_, struct stat *const st_)
+{
+	auto const state = static_cast<RootDir *> (dir_->dirStruct);
+
+	while (state->index < s_mounts.size () && !s_mounts[state->index].mounted)
+		++state->index;
+
+	if (state->index >= s_mounts.size ())
+		return rootErrno (r_, ENOENT);
+
+	// libctru hands us a buffer the size of dirent::d_name
+	constexpr auto nameSize = sizeof (dirent::d_name);
+	std::strncpy (name_, s_mounts[state->index++].name, nameSize - 1);
+	name_[nameSize - 1] = '\0';
+
+	return rootStat (r_, "/", st_);
+}
+
+int rootDirClose (_reent *const, DIR_ITER *const)
+{
+	return 0;
+}
+
+// the root is read-only: every mutating operation fails with EROFS
+int rootOpen (_reent *const r_, void *, char const *const, int const, int const)
+{
+	return rootErrno (r_, EROFS);
+}
+
+int rootUnlink (_reent *const r_, char const *const)
+{
+	return rootErrno (r_, EROFS);
+}
+
+int rootRename (_reent *const r_, char const *const, char const *const)
+{
+	return rootErrno (r_, EROFS);
+}
+
+int rootMkdir (_reent *const r_, char const *const, int const)
+{
+	return rootErrno (r_, EROFS);
+}
+}
+
+bool vroot::init ()
+{
+	std::memset (&s_devoptab, 0, sizeof (s_devoptab));
+	s_devoptab.name        = "vroot";
+	s_devoptab.structSize  = 1;
+	s_devoptab.open_r      = rootOpen;
+	s_devoptab.unlink_r    = rootUnlink;
+	s_devoptab.rename_r    = rootRename;
+	s_devoptab.mkdir_r     = rootMkdir;
+	s_devoptab.rmdir_r     = rootUnlink;
+	s_devoptab.stat_r      = rootStat;
+	s_devoptab.lstat_r     = rootStat;
+	s_devoptab.chdir_r     = rootChdir;
+	s_devoptab.dirStateSize = sizeof (RootDir);
+	s_devoptab.diropen_r   = rootDirOpen;
+	s_devoptab.dirreset_r  = rootDirReset;
+	s_devoptab.dirnext_r   = rootDirNext;
+	s_devoptab.dirclose_r  = rootDirClose;
+
+	if (AddDevice (&s_devoptab) < 0)
+		return false;
+
+	// libctru already mounts "sdmc"; the others are optional since a process
+	// without the matching filesystem access rights is refused by fs:USER
+	s_mounts[0].mounted = true;
+	for (std::size_t i = 1; i < s_mounts.size (); ++i)
+	{
+		auto &mount = s_mounts[i];
+		mount.mounted =
+		    R_SUCCEEDED (archiveMount (mount.id, fsMakePath (PATH_EMPTY, ""), mount.name));
+	}
+
+	return true;
+}
+
+void vroot::exit ()
+{
+	for (std::size_t i = 1; i < s_mounts.size (); ++i)
+	{
+		if (s_mounts[i].mounted)
+			archiveUnmount (s_mounts[i].name);
+		s_mounts[i].mounted = false;
+	}
+
+	RemoveDevice ("vroot:");
+}
+
+bool vroot::mounted (std::string_view const name_)
+{
+	for (auto const &mount : s_mounts)
+	{
+		if (mount.mounted && name_ == mount.name)
+			return true;
+	}
+
+	return false;
+}

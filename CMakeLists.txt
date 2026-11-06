@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.12)
 
-project(ftpd VERSION 3.2.2)
+project(ftpd VERSION 3.3.0)
 
 set(FTPD_PATCH "")
 
@@ -238,6 +238,7 @@ if(NINTENDO_SWITCH)
 elseif(NINTENDO_3DS)
 	target_sources(${FTPD_TARGET} PRIVATE
 		source/3ds/platform.cpp
+		source/3ds/vroot.cpp
 	)
 
 	if(FTPD_CLASSIC)
