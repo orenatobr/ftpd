@@ -44,20 +44,22 @@ struct Mount
 	std::array<u32, 3> data;
 	/// \brief Size in bytes of the binary archive path, 0 for an empty path
 	u32 dataSize;
+	/// \brief HOME save: mounted only when R is held at launch, and writes need an explicit commit
+	bool save;
 	/// \brief Whether the archive was mounted successfully
 	bool mounted;
 };
 
 /// \brief Mounts exposed under "/"
 std::array<Mount, 6> s_mounts{{
-    {"sdmc", ARCHIVE_SDMC, {}, 0, false},
-    {"ctrnand", ARCHIVE_NAND_CTR_FS, {}, 0, false},
-    {"twln", ARCHIVE_NAND_TWL_FS, {}, 0, false},
-    {"twlp", ARCHIVE_TWL_PHOTO, {}, 0, false},
+    {"sdmc", ARCHIVE_SDMC, {}, 0, false, false},
+    {"ctrnand", ARCHIVE_NAND_CTR_FS, {}, 0, false, false},
+    {"twln", ARCHIVE_NAND_TWL_FS, {}, 0, false, false},
+    {"twlp", ARCHIVE_TWL_PHOTO, {}, 0, false, false},
     // HOME Menu (EUR) layout saves, opened through the system so the CMAC stays valid:
     // Launcher.dat (system save 0x00020098) and SaveData.dat (SD extdata 0x00000098)
-    {"homesys", ARCHIVE_SYSTEM_SAVEDATA, {MEDIATYPE_NAND, 0x00020098, 0}, 8, false},
-    {"homeext", ARCHIVE_EXTDATA, {MEDIATYPE_SD, 0x00000098, 0}, 12, false},
+    {"homesys", ARCHIVE_SYSTEM_SAVEDATA, {MEDIATYPE_NAND, 0x00020098, 0}, 8, true, false},
+    {"homeext", ARCHIVE_EXTDATA, {MEDIATYPE_SD, 0x00000098, 0}, 12, true, false},
 }};
 
 /// \brief Directory iterator state for the virtual root
@@ -197,9 +199,17 @@ bool vroot::init ()
 	// libctru already mounts "sdmc"; the others are optional since a process
 	// without the matching filesystem access rights is refused by fs:USER
 	s_mounts[0].mounted = true;
+
+	// the HOME saves are writable over anonymous FTP, so they are opt-in: hold R while launching
+	hidScanInput ();
+	auto const saves = (hidKeysHeld () & KEY_R) != 0;
+
 	for (std::size_t i = 1; i < s_mounts.size (); ++i)
 	{
 		auto &mount = s_mounts[i];
+		if (mount.save && !saves)
+			continue;
+
 		auto const path = mount.dataSize == 0
 		                      ? fsMakePath (PATH_EMPTY, "")
 		                      : FS_Path{PATH_BINARY, mount.dataSize, mount.data.data ()};
@@ -211,6 +221,8 @@ bool vroot::init ()
 
 void vroot::exit ()
 {
+	commit ();
+
 	for (std::size_t i = 1; i < s_mounts.size (); ++i)
 	{
 		if (s_mounts[i].mounted)
@@ -230,4 +242,25 @@ bool vroot::mounted (std::string_view const name_)
 	}
 
 	return false;
+}
+
+bool vroot::isSave (std::string_view const name_)
+{
+	for (auto const &mount : s_mounts)
+	{
+		if (mount.save && name_ == mount.name)
+			return true;
+	}
+
+	return false;
+}
+
+void vroot::commit ()
+{
+	// save data archives drop uncommitted writes when they are unmounted
+	for (auto const &mount : s_mounts)
+	{
+		if (mount.save && mount.mounted)
+			archiveCommitSaveData (mount.name);
+	}
 }

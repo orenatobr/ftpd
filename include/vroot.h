@@ -37,5 +37,12 @@ void exit ();
 /// \brief Whether a top-level directory (device) is mounted
 /// \param name_ Directory name (e.g. "sdmc")
 bool mounted (std::string_view name_);
+
+/// \brief Whether a device is a HOME save archive (opt-in, writes need a commit)
+/// \param name_ Directory name (e.g. "homesys")
+bool isSave (std::string_view name_);
+
+/// \brief Commit pending writes to the mounted HOME save archives
+void commit ();
 }
 #endif
