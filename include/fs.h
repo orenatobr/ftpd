@@ -85,6 +85,11 @@ public:
 	/// \brief Close file
 	void close ();
 
+	/// \brief Commit a file written in a HOME save archive; to be called once, after a clean transfer
+	/// \return Whether the data is committed (true for a file that needs no commit)
+	/// \note close () never commits: a file that is not committed is dropped with its archive
+	bool commit ();
+
 	/// \brief Seek to file position
 	/// \param pos_ File position
 	/// \param origin_ Reference position (\sa ::fseeko)
@@ -133,6 +138,14 @@ private:
 
 	/// \brief Buffer
 	std::vector<char> m_buffer;
+
+#ifdef __3DS__
+	/// \brief HOME save archive the file is open for writing in, committed on a clean close
+	std::string m_save;
+
+	/// \brief Whether the stream is a HOME extdata file, committed by vroot::extFinish
+	bool m_ext = false;
+#endif
 
 	/// \brief Line buffer
 	gsl::owner<char *> m_lineBuffer = nullptr;

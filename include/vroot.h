@@ -22,6 +22,7 @@
 
 #pragma once
 
+#include <cstdio>
 #include <string_view>
 
 #ifdef __3DS__
@@ -37,5 +38,25 @@ void exit ();
 /// \brief Whether a top-level folder (a NAND device) is mounted
 /// \param name_ Folder name (e.g. "ctrnand")
 bool mounted (std::string_view name_);
+
+/// \brief Whether a folder is a HOME save archive (opt-in, writes need a commit)
+/// \param name_ Folder name (e.g. "homesys")
+bool isSave (std::string_view name_);
+
+/// \brief Open a file of the HOME extdata for writing (modes "r+" and "w" only)
+/// \param path_ Native path (e.g. "homeext:/SaveData.dat")
+/// \param mode_ fopen mode
+/// \return The stream, or nullptr if the path is not in a mounted extdata
+std::FILE *openExt (char const *path_, char const *mode_);
+
+/// \brief Cut and commit an extdata file opened with openExt, after a clean transfer
+/// \param stream_ Stream returned by openExt, not closed yet
+/// \return Whether the changes were committed (true for a stream that is not an extdata file)
+bool extFinish (std::FILE *stream_);
+
+/// \brief Commit pending writes to one mounted HOME save archive
+/// \param name_ Folder name (e.g. "homesys")
+/// \return Whether the changes were committed
+bool commit (std::string_view name_);
 }
 #endif

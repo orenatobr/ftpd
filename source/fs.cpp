@@ -33,6 +33,7 @@
 #include <cinttypes>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <cstdlib>
 #include <dirent.h>
 #include <memory>
@@ -158,9 +159,29 @@ std::string fs::native (std::string_view const path_)
 bool fs::File::open (gsl::not_null<char const *> const path_,
     gsl::not_null<char const *> const mode_)
 {
-	gsl::owner<FILE *> fp = std::fopen (fs::native (path_.get ()).c_str (), mode_);
+	auto const native = fs::native (path_.get ());
+	gsl::owner<FILE *> fp = nullptr;
+#ifdef __3DS__
+	// the generic archive devoptab refuses writes to extdata files, so go through the FS API
+	m_ext = false;
+	if (std::strpbrk (mode_.get (), "wa+"))
+	{
+		fp    = vroot::openExt (native.c_str (), mode_);
+		m_ext = fp != nullptr;
+	}
+#endif
+	if (!fp)
+		fp = std::fopen (native.c_str (), mode_);
 	if (!fp)
 		return false;
+
+#ifdef __3DS__
+	// only writers need a commit, and only for the archive they write to
+	auto const dev = native.substr (0, native.find (':'));
+	m_save.clear ();
+	if (!m_ext && vroot::isSave (dev) && std::strpbrk (mode_.get (), "wa+"))
+		m_save = dev;
+#endif
 
 	m_fp = std::unique_ptr<std::FILE, int (*) (std::FILE *)> (fp, &std::fclose);
 
@@ -172,7 +193,31 @@ bool fs::File::open (gsl::not_null<char const *> const path_,
 
 void fs::File::close ()
 {
+	// nothing is committed here: an upload that did not reach commit () is dropped
 	m_fp.reset ();
+
+#ifdef __3DS__
+	m_ext = false;
+	m_save.clear ();
+#endif
+}
+
+bool fs::File::commit ()
+{
+#ifdef __3DS__
+	if (!m_fp || (!m_ext && m_save.empty ()))
+		return true;
+
+	if (std::ferror (m_fp.get ()) != 0 || std::fflush (m_fp.get ()) != 0)
+		return false;
+
+	if (m_ext)
+		return vroot::extFinish (m_fp.get ());
+
+	return vroot::commit (m_save);
+#else
+	return true;
+#endif
 }
 
 int fs::File::seek (std::int64_t const pos_, int const origin_)

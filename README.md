@@ -25,6 +25,14 @@ Notes:
 - The CIA requests the filesystem access rights needed for the NAND. A `.3dsx`
   only sees the NAND areas if the launcher grants those rights; otherwise they
   are hidden and the SD card keeps working.
+- HOME menu layout (EUR HOME only, opt-in): the separate `ftpd-home` CIA has its own title id
+  (`000400000f7df200`), broader filesystem rights, and mounts two more folders when R is held while
+  launching: `/homesys` (`Launcher.dat`, the HOME system save) and `/homeext` (`SaveData.dat`,
+  `Cache.dat`, `CacheD.dat`, the HOME extdata). Writes go through the system filesystem API and are
+  committed only when an upload finishes cleanly, so an aborted transfer is dropped. HOME keeps a
+  layout in both files, so write both or neither, and back them up first. Build it with
+  `scripts/build-cia-home.sh`. At launch it also writes `sdmc:/ftpd-home-diag.txt` with the result of
+  opening each save for writing. Reading `CacheD.dat` past about 2.3 MB currently stops with a `451`.
 - Writing to NAND can brick the console, so back it up first.
 - Not tested on real hardware yet.
 - The Switch version is not supported in this fork.
