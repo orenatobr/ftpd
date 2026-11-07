@@ -126,6 +126,16 @@ void probeSaves ()
 	std::fclose (log);
 }
 
+/// \brief Append the result of a failed extdata finish step to the diagnostics file on the card
+void logExtStep (char const *const step_, Result const rc_)
+{
+	if (auto const log = std::fopen ("sdmc:/ftpd-home-diag.txt", "a"))
+	{
+		std::fprintf (log, "extFinish: %s %08lx\n", step_, static_cast<unsigned long> (rc_));
+		std::fclose (log);
+	}
+}
+
 /// \brief File of the HOME extdata, opened through the filesystem API directly
 /// \note The generic archive devoptab refuses to open extdata files for writing
 struct ExtFile
@@ -541,16 +551,33 @@ bool vroot::extFinish (std::FILE *const stream_)
 	u64 size = 0;
 	if (f->truncate)
 	{
-		if (R_FAILED (FSFILE_GetSize (f->file, &size)))
+		if (auto const rc = FSFILE_GetSize (f->file, &size); R_FAILED (rc))
+		{
+			logExtStep ("GetSize", rc);
 			return false;
-		if (f->end < size && R_FAILED (FSFILE_SetSize (f->file, f->end)))
-			return false;
+		}
+		if (f->end < size)
+		{
+			if (auto const rc = FSFILE_SetSize (f->file, f->end); R_FAILED (rc))
+			{
+				logExtStep ("SetSize", rc);
+				return false;
+			}
+		}
 	}
 
-	if (R_FAILED (FSFILE_Flush (f->file)))
+	if (auto const rc = FSFILE_Flush (f->file); R_FAILED (rc))
+	{
+		logExtStep ("Flush", rc);
 		return false;
+	}
 
-	// save data archives drop uncommitted writes
-	return R_SUCCEEDED (
-	    FSUSER_ControlArchive (f->archive, ARCHIVE_ACTION_COMMIT_SAVE_DATA, nullptr, 0, nullptr, 0));
+	// extdata is written through to the card and has no journal to commit (the commit is for save
+	// data), so a refusal here does not lose the write: record it and report success
+	if (auto const rc =
+	        FSUSER_ControlArchive (f->archive, ARCHIVE_ACTION_COMMIT_SAVE_DATA, nullptr, 0, nullptr, 0);
+	    R_FAILED (rc))
+		logExtStep ("ControlArchive commit (ignored)", rc);
+
+	return true;
 }
