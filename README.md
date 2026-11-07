@@ -32,7 +32,10 @@ Notes:
   committed only when an upload finishes cleanly, so an aborted transfer is dropped. HOME keeps a
   layout in both files, so write both or neither, and back them up first. Build it with
   `scripts/build-cia-home.sh`. At launch it also writes `sdmc:/ftpd-home-diag.txt` with the result of
-  opening each save for writing. Reading `CacheD.dat` past about 2.3 MB currently stops with a `451`.
+  opening each save for writing. The HOME saves are released when the app is suspended (HOME button or
+  sleep) and mounted again on return, because HOME aborts if one of its saves is still open elsewhere;
+  an upload still in progress keeps them mounted. Reading `CacheD.dat` past about 2.3 MB currently
+  stops with a `451`.
 - Writing to NAND can brick the console, so back it up first.
 - Not tested on real hardware yet.
 - The Switch version is not supported in this fork.

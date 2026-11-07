@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.12)
 
-project(ftpd VERSION 3.3.3)
+project(ftpd VERSION 3.3.4)
 
 set(FTPD_PATCH "")
 

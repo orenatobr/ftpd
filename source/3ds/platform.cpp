@@ -171,12 +171,14 @@ void handleAPTHook (APT_HookType const type_, void *const param_)
 		// turn on backlight, or you can't see the home menu!
 		if (!s_backlight)
 			enableBacklight (true);
+		vroot::suspend ();
 		break;
 
 	case APTHOOK_ONRESTORE:
 	case APTHOOK_ONWAKEUP:
 		// restore backlight setting
 		enableBacklight (s_backlight);
+		vroot::resume ();
 		break;
 
 	default:

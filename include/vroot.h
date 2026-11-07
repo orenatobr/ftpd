@@ -35,6 +35,12 @@ bool init ();
 /// \brief Unmount the NAND archives and unregister the virtual root device
 void exit ();
 
+/// \brief Release the HOME save archives before the app is suspended (HOME aborts if they stay open)
+void suspend ();
+
+/// \brief Mount again the HOME save archives released by suspend ()
+void resume ();
+
 /// \brief Whether a top-level folder (a NAND device) is mounted
 /// \param name_ Folder name (e.g. "ctrnand")
 bool mounted (std::string_view name_);
