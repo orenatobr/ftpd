@@ -54,6 +54,8 @@ struct Mount
 	bool save;
 	/// \brief Whether the archive was mounted successfully
 	bool mounted;
+	/// \brief Whether vroot::suspend unmounted the archive, so vroot::resume must mount it again
+	bool suspended = false;
 };
 
 /// \brief Mounts exposed under "/"
@@ -397,6 +399,38 @@ void vroot::exit ()
 	}
 
 	RemoveDevice ("vroot:");
+}
+
+void vroot::suspend ()
+{
+	// HOME needs its own saves while we are suspended: a save archive still open here makes it abort
+	// (svcBreak on system save 0x20098). Transfers hold their own archive handle, so while one is
+	// open the mounts stay as they are rather than being pulled from under the file.
+	if (!s_extFiles.empty ())
+		return;
+
+	for (auto &mount : s_mounts)
+	{
+		if (!mount.save || !mount.mounted)
+			continue;
+
+		archiveUnmount (mount.name);
+		mount.mounted   = false;
+		mount.suspended = true;
+	}
+}
+
+void vroot::resume ()
+{
+	for (auto &mount : s_mounts)
+	{
+		if (!mount.suspended)
+			continue;
+
+		FS_Path const path{PATH_BINARY, mount.dataSize, mount.data.data ()};
+		mount.mounted   = R_SUCCEEDED (archiveMount (mount.id, path, mount.name));
+		mount.suspended = false;
+	}
 }
 
 bool vroot::mounted (std::string_view const name_)
